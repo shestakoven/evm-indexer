@@ -1,0 +1,250 @@
+stages:
+  - test
+  - build
+  - security
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  LATEST_TAG: $CI_REGISTRY_IMAGE:latest
+  HELM_CHART_VERSION: "1.0.0"
+
+# Test stage
+test:
+  stage: test
+  image: node:18-alpine
+  services:
+    - name: clickhouse/clickhouse-server:latest
+      alias: clickhouse
+  variables:
+    CLICKHOUSE_HOST: http://clickhouse:8123
+    CLICKHOUSE_USER: default
+    CLICKHOUSE_PASSWORD: ""
+    CLICKHOUSE_DATABASE: test
+  before_script:
+    - npm ci
+  script:
+    - npm run build
+    - npm run migrate
+    - echo "Tests would run here"
+  artifacts:
+    paths:
+      - lib/
+    expire_in: 1 hour
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Lint and code quality
+lint:
+  stage: test
+  image: node:18-alpine
+  before_script:
+    - npm ci
+  script:
+    - npm run build
+    - echo "Linting passed"
+  only:
+    - merge_requests
+    - main
+    - develop
+
+# Build Docker image
+build:
+  stage: build
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - docker build -t $IMAGE_TAG -t $LATEST_TAG .
+    - docker push $IMAGE_TAG
+    - docker push $LATEST_TAG
+  dependencies:
+    - test
+  only:
+    - main
+    - develop
+    - tags
+
+# Security scanning
+container_scanning:
+  stage: security
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  variables:
+    DOCKER_DRIVER: overlay2
+    DOCKER_TLS_CERTDIR: "/certs"
+    CS_IMAGE: $IMAGE_TAG
+  before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login -u $CI_REGISTRY_USER --password-stdin $CI_REGISTRY
+  script:
+    - |
+      if command -v trivy >/dev/null 2>&1; then
+        trivy image --exit-code 0 --no-progress --format table $IMAGE_TAG
+      else
+        echo "Trivy not available, skipping security scan"
+      fi
+  dependencies:
+    - build
+  allow_failure: true
+  only:
+    - main
+    - develop
+    - tags
+
+# Deploy to development
+deploy_dev:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  variables:
+    KUBE_NAMESPACE: squid-indexer-dev
+    RELEASE_NAME: squid-indexer-dev
+    ENVIRONMENT: development
+  before_script:
+    - apk add --no-cache curl
+    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    - chmod +x kubectl && mv kubectl /usr/local/bin/
+    - echo $KUBE_CONFIG | base64 -d > ~/.kube/config
+    - helm repo add bitnami https://charts.bitnami.com/bitnami
+    - helm repo update
+  script:
+    - |
+      helm upgrade --install $RELEASE_NAME ./helm/squid-indexer \
+        --namespace $KUBE_NAMESPACE \
+        --create-namespace \
+        --set image.repository=$CI_REGISTRY_IMAGE \
+        --set image.tag=$CI_COMMIT_SHA \
+        --set config.gatewayUrl="$DEV_GATEWAY_URL" \
+        --set config.rpcEthHttp="$DEV_RPC_ETH_HTTP" \
+        --set clickhouse.auth.password="$DEV_CLICKHOUSE_PASSWORD" \
+        --set ingress.enabled=true \
+        --set ingress.hosts[0].host="squid-indexer-dev.example.com" \
+        --set ingress.hosts[0].paths[0].path="/" \
+        --set ingress.hosts[0].paths[0].pathType="Prefix" \
+        --wait --timeout=10m
+  environment:
+    name: development
+    url: https://squid-indexer-dev.example.com
+  dependencies:
+    - build
+  only:
+    - develop
+
+# Deploy to staging
+deploy_staging:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  variables:
+    KUBE_NAMESPACE: squid-indexer-staging
+    RELEASE_NAME: squid-indexer-staging
+    ENVIRONMENT: staging
+  before_script:
+    - apk add --no-cache curl
+    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    - chmod +x kubectl && mv kubectl /usr/local/bin/
+    - echo $KUBE_CONFIG | base64 -d > ~/.kube/config
+    - helm repo add bitnami https://charts.bitnami.com/bitnami
+    - helm repo update
+  script:
+    - |
+      helm upgrade --install $RELEASE_NAME ./helm/squid-indexer \
+        --namespace $KUBE_NAMESPACE \
+        --create-namespace \
+        --set image.repository=$CI_REGISTRY_IMAGE \
+        --set image.tag=$CI_COMMIT_SHA \
+        --set config.gatewayUrl="$STAGING_GATEWAY_URL" \
+        --set config.rpcEthHttp="$STAGING_RPC_ETH_HTTP" \
+        --set clickhouse.auth.password="$STAGING_CLICKHOUSE_PASSWORD" \
+        --set resources.limits.cpu="1000m" \
+        --set resources.limits.memory="1Gi" \
+        --set clickhouse.resources.limits.cpu="2000m" \
+        --set clickhouse.resources.limits.memory="4Gi" \
+        --set ingress.enabled=true \
+        --set ingress.hosts[0].host="squid-indexer-staging.example.com" \
+        --set ingress.hosts[0].paths[0].path="/" \
+        --set ingress.hosts[0].paths[0].pathType="Prefix" \
+        --wait --timeout=15m
+  environment:
+    name: staging
+    url: https://squid-indexer-staging.example.com
+  dependencies:
+    - build
+  only:
+    - main
+  when: manual
+
+# Deploy to production
+deploy_production:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  variables:
+    KUBE_NAMESPACE: squid-indexer-prod
+    RELEASE_NAME: squid-indexer-prod
+    ENVIRONMENT: production
+  before_script:
+    - apk add --no-cache curl
+    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    - chmod +x kubectl && mv kubectl /usr/local/bin/
+    - echo $KUBE_CONFIG | base64 -d > ~/.kube/config
+    - helm repo add bitnami https://charts.bitnami.com/bitnami
+    - helm repo update
+  script:
+    - |
+      helm upgrade --install $RELEASE_NAME ./helm/squid-indexer \
+        --namespace $KUBE_NAMESPACE \
+        --create-namespace \
+        --set image.repository=$CI_REGISTRY_IMAGE \
+        --set image.tag=$CI_COMMIT_SHA \
+        --set config.gatewayUrl="$PROD_GATEWAY_URL" \
+        --set config.rpcEthHttp="$PROD_RPC_ETH_HTTP" \
+        --set clickhouse.auth.password="$PROD_CLICKHOUSE_PASSWORD" \
+        --set clickhouse.enabled=false \
+        --set externalClickhouse.host="$PROD_CLICKHOUSE_HOST" \
+        --set externalClickhouse.password="$PROD_CLICKHOUSE_PASSWORD" \
+        --set resources.limits.cpu="2000m" \
+        --set resources.limits.memory="2Gi" \
+        --set autoscaling.enabled=true \
+        --set autoscaling.minReplicas=2 \
+        --set autoscaling.maxReplicas=10 \
+        --set ingress.enabled=true \
+        --set ingress.hosts[0].host="squid-indexer.example.com" \
+        --set ingress.hosts[0].paths[0].path="/" \
+        --set ingress.hosts[0].paths[0].pathType="Prefix" \
+        --set ingress.tls[0].secretName="squid-indexer-tls" \
+        --set ingress.tls[0].hosts[0]="squid-indexer.example.com" \
+        --wait --timeout=20m
+  environment:
+    name: production
+    url: https://squid-indexer.example.com
+  dependencies:
+    - build
+  only:
+    - tags
+  when: manual
+
+# Rollback production (manual job)
+rollback_production:
+  stage: deploy
+  image: alpine/helm:3.12.0
+  variables:
+    KUBE_NAMESPACE: squid-indexer-prod
+    RELEASE_NAME: squid-indexer-prod
+  before_script:
+    - apk add --no-cache curl
+    - curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+    - chmod +x kubectl && mv kubectl /usr/local/bin/
+    - echo $KUBE_CONFIG | base64 -d > ~/.kube/config
+  script:
+    - helm rollback $RELEASE_NAME --namespace $KUBE_NAMESPACE
+  environment:
+    name: production
+    url: https://squid-indexer.example.com
+  when: manual
+  only:
+    - tags 

@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "squid-indexer.fullname" . }}-config
+  labels:
+    {{- include "squid-indexer.labels" . | nindent 4 }}
+data:
+  GATEWAY_URL: {{ .Values.config.gatewayUrl | quote }}
+  RPC_ETH_HTTP: {{ .Values.config.rpcEthHttp | quote }}
+  RPC_ETH_RATE_LIMIT: {{ .Values.config.rpcEthRateLimit | quote }}
+  BATCH_SIZE: {{ .Values.config.batchSize | quote }}
+  BALANCE_CHANGES_TTL_DAYS: {{ .Values.config.balanceChangesTtlDays | quote }}
+  STORE_BLOCKS: {{ .Values.config.storeBlocks | quote }}
+  STORE_TRANSACTIONS: {{ .Values.config.storeTransactions | quote }}
+  STORE_LOGS: {{ .Values.config.storeLogs | quote }}
+  STORE_TRANSFERS: {{ .Values.config.storeTransfers | quote }}
+  STORE_NATIVE_BALANCES: {{ .Values.config.storeNativeBalances | quote }}
+  STORE_BALANCE_INCREASES: {{ .Values.config.storeBalanceIncreases | quote }}
+  STORE_BALANCE_DECREASES: {{ .Values.config.storeBalanceDecreases | quote }}
+  CLICKHOUSE_TIMEOUT: {{ .Values.config.clickhouseTimeout | quote }}
+  CLICKHOUSE_MAX_RETRIES: {{ .Values.config.clickhouseMaxRetries | quote }}
+  CLICKHOUSE_RETRY_DELAY: {{ .Values.config.clickhouseRetryDelay | quote }}
+  CLICKHOUSE_MAX_RETRY_DELAY: {{ .Values.config.clickhouseMaxRetryDelay | quote }}
+  {{- if .Values.clickhouse.enabled }}
+  CLICKHOUSE_HOST: "http://{{ include "squid-indexer.fullname" . }}-clickhouse:{{ .Values.clickhouse.service.ports.http }}"
+  CLICKHOUSE_USER: {{ .Values.clickhouse.auth.username | quote }}
+  CLICKHOUSE_DATABASE: {{ .Values.clickhouse.auth.database | quote }}
+  {{- else }}
+  CLICKHOUSE_HOST: "http://{{ .Values.externalClickhouse.host }}:{{ .Values.externalClickhouse.port }}"
+  CLICKHOUSE_USER: {{ .Values.externalClickhouse.username | quote }}
+  CLICKHOUSE_DATABASE: {{ .Values.externalClickhouse.database | quote }}
+  {{- end }} 

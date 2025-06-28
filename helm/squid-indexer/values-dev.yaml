@@ -1,0 +1,48 @@
+# Development environment overrides
+replicaCount: 1
+
+image:
+  tag: "develop"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+config:
+  # Reduced batch size for development
+  batchSize: 50
+  # Shorter TTL for faster testing
+  balanceChangesTtlDays: 7
+  # Enable more storage for debugging
+  storeBlocks: true
+  storeTransactions: true
+  storeLogs: true
+
+clickhouse:
+  enabled: true
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    limits:
+      cpu: 500m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 512Mi
+
+ingress:
+  enabled: true
+  hosts:
+    - host: squid-indexer-dev.local
+      paths:
+        - path: /
+          pathType: Prefix
+
+# Enable debug logging
+podAnnotations:
+  debug: "true" 

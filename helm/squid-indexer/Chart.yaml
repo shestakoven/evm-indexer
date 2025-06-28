@@ -1,0 +1,25 @@
+apiVersion: v2
+name: squid-indexer
+description: A high-performance EVM blockchain indexer built with Subsquid
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+home: https://github.com/your-org/squid-indexer
+sources:
+  - https://github.com/your-org/squid-indexer
+maintainers:
+  - name: Squid Team
+    email: team@squid.io
+keywords:
+  - blockchain
+  - indexer
+  - ethereum
+  - subsquid
+  - clickhouse
+dependencies:
+  - name: clickhouse
+    version: "4.1.0"
+    repository: https://charts.bitnami.com/bitnami
+    condition: clickhouse.enabled
+annotations:
+  category: Blockchain 

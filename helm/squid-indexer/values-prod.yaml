@@ -1,0 +1,94 @@
+# Production environment overrides
+replicaCount: 2
+
+image:
+  tag: "latest"
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 1000m
+    memory: 1Gi
+
+config:
+  # Optimized batch size for production
+  batchSize: 200
+  # Standard TTL for production
+  balanceChangesTtlDays: 90
+  # Minimal storage for performance
+  storeBlocks: false
+  storeTransactions: false
+  storeLogs: false
+
+# Use external ClickHouse in production
+clickhouse:
+  enabled: false
+
+externalClickhouse:
+  host: "clickhouse-prod.example.com"
+  port: 8123
+  username: "squid_user"
+  # Password should be set via environment variables
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+  hosts:
+    - host: squid-indexer.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: squid-indexer-tls
+      hosts:
+        - squid-indexer.example.com
+
+# Production security settings
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1001
+
+# Node affinity for production
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      preference:
+        matchExpressions:
+        - key: node-type
+          operator: In
+          values:
+          - compute-optimized
+
+# Monitoring enabled in production
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s 
