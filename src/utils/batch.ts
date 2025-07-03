@@ -1,5 +1,6 @@
 import { insert as clickhouseInsert } from '../clickhouseClient/clickhouseClient';
 import { CONFIG } from '../config';
+import { rabbitmqPublisher } from '../services/rabbitmqPublisher';
 import { 
     BlockRow, 
     TransactionRow, 
@@ -73,6 +74,7 @@ export class BatchManagerImpl implements BatchManager {
     balanceDecreases: BalanceChange[] = [];
     snapshots: any[] = [];
 
+
     async flushIfNeeded(): Promise<void> {
         if (CONFIG.STORE_BLOCKS && this.blocks.length >= CONFIG.BATCH_SIZE) {
             await insertBlocksBatch(this.blocks);
@@ -106,6 +108,11 @@ export class BatchManagerImpl implements BatchManager {
             await insertSnapshotsBatch(this.snapshots);
             this.snapshots = [];
         }
+        await rabbitmqPublisher.publishBatchMessage(
+            this.transfers[0].block_number, 
+            this.transfers[this.transfers.length - 1].block_number, 
+            CONFIG.RABBITMQ_ROUTING_KEY
+        );
     }
 
     async flushAll(): Promise<void> {
@@ -141,5 +148,10 @@ export class BatchManagerImpl implements BatchManager {
             await insertSnapshotsBatch(this.snapshots);
             this.snapshots = [];
         }
+        await rabbitmqPublisher.publishBatchMessage(
+            this.transfers[0].block_number, 
+            this.transfers[this.transfers.length - 1].block_number, 
+            CONFIG.RABBITMQ_ROUTING_KEY
+        );
     }
 } 

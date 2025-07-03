@@ -27,6 +27,19 @@ services:
     networks:
       - squid-network
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - squid-network
+
   indexer:
     build: .
     environment:
@@ -53,14 +66,23 @@ services:
       GATEWAY_URL: ${GATEWAY_URL}
       RPC_ETH_HTTP: ${RPC_ETH_HTTP}
       RPC_ETH_RATE_LIMIT: ${RPC_ETH_RATE_LIMIT:-10}
+      
+      # RabbitMQ configuration
+      RABBITMQ_ENABLED: "true"
+      RABBITMQ_URL: "amqp://admin:admin123@rabbitmq:5672"
+      RABBITMQ_QUEUE: "block_batches"
+      RABBITMQ_EXCHANGE: ""
+      RABBITMQ_ROUTING_KEY: "blocks.batch"
     depends_on:
       - clickhouse
+      - rabbitmq
     networks:
       - squid-network
     restart: unless-stopped
 
 volumes:
   clickhouse_data:
+  rabbitmq_data:
 
 networks:
   squid-network:

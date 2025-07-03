@@ -1,6 +1,6 @@
-import dotenv from 'dotenv';
+import { config } from 'dotenv';
 
-dotenv.config();
+config();
 
 // Storage configuration flags
 export const CONFIG = {
@@ -24,6 +24,13 @@ export const CONFIG = {
     RPC_ETH_HTTP: process.env.RPC_ETH_HTTP,
     RPC_ETH_RATE_LIMIT: process.env.RPC_ETH_RATE_LIMIT ? parseInt(process.env.RPC_ETH_RATE_LIMIT) : 0,
     
+    // RabbitMQ configuration
+    RABBITMQ_URL: process.env.RABBITMQ_URL || 'amqp://localhost:5672',
+    RABBITMQ_QUEUE: process.env.RABBITMQ_QUEUE || 'block_batches',
+    RABBITMQ_EXCHANGE: process.env.RABBITMQ_EXCHANGE || '',
+    RABBITMQ_ROUTING_KEY: process.env.RABBITMQ_ROUTING_KEY || 'blocks.batch',
+    RABBITMQ_ENABLED: process.env.RABBITMQ_ENABLED !== 'false',
+    
     // Constants
     ZERO_ADDRESS: '0x0000000000000000000000000000000000000000',
     TRANSFER_TOPIC: '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
@@ -43,4 +50,11 @@ export function logConfiguration(): void {
 
     console.log(`  BATCH_SIZE: ${CONFIG.BATCH_SIZE}`);
     console.log(`  BALANCE_CHANGES_TTL_DAYS: ${CONFIG.BALANCE_CHANGES_TTL_DAYS}`);
+    
+    console.log('RabbitMQ configuration:');
+    console.log(`  RABBITMQ_ENABLED: ${CONFIG.RABBITMQ_ENABLED}`);
+    console.log(`  RABBITMQ_URL: ${CONFIG.RABBITMQ_URL}`);
+    console.log(`  RABBITMQ_QUEUE: ${CONFIG.RABBITMQ_QUEUE}`);
+    console.log(`  RABBITMQ_EXCHANGE: ${CONFIG.RABBITMQ_EXCHANGE}`);
+    console.log(`  RABBITMQ_ROUTING_KEY: ${CONFIG.RABBITMQ_ROUTING_KEY}`);
 } 

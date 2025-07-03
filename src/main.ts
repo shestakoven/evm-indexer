@@ -9,6 +9,7 @@ import {
     parseERC1155Transfer 
 } from './parsers/transfer';
 import { BlockRow, TransactionRow, LogRow, NativeBalance } from './types';
+import { rabbitmqPublisher } from './services/rabbitmqPublisher';
 
 
 // Perform health checks before starting
@@ -16,6 +17,7 @@ async function performHealthChecks() {
     try {
         await waitForClickHouse();
         await checkClickHouseSchema();
+        await rabbitmqPublisher.connect();
     } catch (error) {
         console.error('Health checks failed:', error);
         process.exit(1);
@@ -268,16 +270,19 @@ processor.run(db, async (ctx) => {
 process.on('SIGINT', async () => {
     console.log('Flushing batches before exit (SIGINT)...');
     await batchManager.flushAll();
+    await rabbitmqPublisher.close();
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
     console.log('Flushing batches before exit (SIGTERM)...');
     await batchManager.flushAll();
+    await rabbitmqPublisher.close();
     process.exit(0);
 });
 
 process.on('exit', async () => {
     console.log('Flushing batches before exit...');
     await batchManager.flushAll();
+    await rabbitmqPublisher.close();
 });
